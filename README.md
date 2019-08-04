@@ -4,7 +4,7 @@ Simple scripts to deploy a kubernetes cluster on [Scaleway](https://www.scaleway
 
 ## Prerequisites
 
-Download the [scaleway cli](https://github.com/scaleway/scaleway-cli), and provide a flexible IP using [the scaleway console](https://console.scaleway.com/instance/ips). Export that IP as `export SCW_FLEX_IP=<your_ip>` and you're ready.
+Download and install the [scaleway cli](https://github.com/scaleway/scaleway-cli), login to it and provide a flexible IP using [the scaleway console](https://console.scaleway.com/instance/ips). Export that IP as `export SCW_FLEX_IP=<your_ip>` and you're ready.
 
 ## Getting started
 
