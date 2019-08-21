@@ -61,11 +61,22 @@ while getopts "h?c:k:p:n:" opt; do
 done
 
 INIT_ARGS="--pod-network-cidr=192.168.0.0/16"
-COMMON_TAGS="k8s-cluster=${cluster_name}"
+CLUSTER_TAG="k8s-cluster=${cluster_name}"
 
 # main functions
 function start_all {
-    scw start $(scw ps -a | grep ${cluster_name}- | awk '{print $1}')
+    started=0
+    for node in $(scw ps -qf "state=stopped tags=${CLUSTER_TAG}"); do
+        scw start ${node}
+        echo "Started node $(scw inspect -f "{{ .Name }}") (${node})"
+        let "started++"
+    done
+    if [ "$started" -lt "$node_count" ]; then
+        echo "Started ${started} nodes but expected ${node_count}. Cluster state after starting nodes:";
+        scw ps -af "tags=${CLUSTER_TAG}";
+    else
+        echo "Successfully started ${started} nodes"
+    fi
 }
 
 function stop_all {
@@ -76,9 +87,8 @@ function stop_all {
 
 function create_nodes {
     echo "Creating one master and ${node_count} worker nodes."
-    echo ${COMMON_TAGS} > ./tmp/common_tags
     scw create --name="${cluster_name}-master" --ip-address="${MASTER_FLEX_IP:-dynamic}" \
-        --commercial-type="DEV1-S" --env="${COMMON_TAGS} role=master" f974feac > ./tmp/master_id
+        --commercial-type="DEV1-S" --env="${CLUSTER_TAG} role=master" f974feac > ./tmp/master_id
     for ((i=0;i<=node_count-1;i++)); do
         varname=NODE_${node_num}_FLEX_IP
         ip_address=${!varname:-dynamic}
@@ -87,7 +97,7 @@ function create_nodes {
         fi
         # currently dynamic ip address is required to install stuff from the internet
         scw create --name="${cluster_name}-node-${i}" --ip-address=${ip_address} \
-         --commercial-type="DEV1-S" --env="${COMMON_TAGS} role=master" f974feac > ./tmp/node_${i}_id
+         --commercial-type="DEV1-S" --env="${CLUSTER_TAG} role=master" f974feac > ./tmp/node_${i}_id
     done
 }
 
