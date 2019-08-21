@@ -60,12 +60,12 @@ INIT_ARGS="--pod-network-cidr=192.168.0.0/16"
 
 # main functions
 function start_all {
-    scw start $(scw ps -a | grep k8s- | awk '{print ${1}}')
+    scw start $(scw ps -a | grep k8s- | awk '{print $1}')
 }
 
 function stop_all {
     echo "Stopping all nodes"
-    scw stop $(scw ps -a | grep k8s- | awk '{print ${1}}')
+    scw stop $(scw ps -a | grep k8s- | awk '{print $1}')
     wait_for_state stopped
 }
 
@@ -93,8 +93,8 @@ function bootstrap {
 }
 
 function delete_all {
-    echo "Deleting all k8s- nodes"
-    scw rm $(scw ps -a | grep k8s- | awk '{print ${1}}')
+    echo "Deleting all k8s- servers"
+    scw rm $(scw ps -a | grep k8s- | awk '{print $1}')
 }
 
 function create_kubeconfig {
