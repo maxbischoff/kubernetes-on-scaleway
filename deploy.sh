@@ -7,8 +7,8 @@ ACTION="${1}"
 function show_help {
     echo "usage: $(basename ${0}) COMMAND [OPTIONS]"
     echo
-    echo "Currently the variable SCW_FLEX_IP must be set to a pre-provisioned flexible IP for the master node!"
-    echo "You can also apply flex-IPs for worker nodes with environment variables NODE_0_FLEX_IP"
+    echo "Set the variable MASTER_FLEX_IP to a pre-provisioned flexible IP to ensure that it is not changed after a reboot."
+    echo "You can also apply flex-IPs for worker nodes with environment variables NODE_x_FLEX_IP where x is the worker node number."
     echo
     echo "Commands:"
     echo "  bootstrap   Bootstrap a cluster in mulitple phases (see below)"
@@ -41,8 +41,9 @@ node_count=1
 kubernetes_version="v1.15.0"
 docker_version="18.06.2"
 bootstrap_phase=
+cluster_name="k8s"
 
-while getopts "h?c:k:p:" opt; do
+while getopts "h?c:k:p:n:" opt; do
     case "$opt" in
     h|\?)
         show_help
@@ -54,25 +55,30 @@ while getopts "h?c:k:p:" opt; do
         ;;
     p)  bootstrap_phase=$OPTARG
         ;;
+    n)  cluster_name=$OPTARG
+        ;;
     esac
 done
 
 INIT_ARGS="--pod-network-cidr=192.168.0.0/16"
+COMMON_TAGS="k8s-cluster=${cluster_name}"
 
 # main functions
 function start_all {
-    scw start $(scw ps -a | grep k8s- | awk '{print $1}')
+    scw start $(scw ps -a | grep ${cluster_name}- | awk '{print $1}')
 }
 
 function stop_all {
     echo "Stopping all nodes"
-    scw stop $(scw ps -a | grep k8s- | awk '{print $1}')
-    wait_for_state stopped
+    scw stop $(scw ps -a | grep ${cluster_name}- | awk '{print $1}')
+    wait_for_state stopped ${cluster_name}
 }
 
 function create_nodes {
     echo "Creating one master and ${node_count} worker nodes."
-    scw create --name="k8s-master" --ip-address="${SCW_FLEX_IP}" --commercial-type="DEV1-S" f974feac > ./tmp/master_id
+    echo ${COMMON_TAGS} > ./tmp/common_tags
+    scw create --name="${cluster_name}-master" --ip-address="${MASTER_FLEX_IP:-dynamic}" \
+        --commercial-type="DEV1-S" --env="${COMMON_TAGS} role=master" f974feac > ./tmp/master_id
     for ((i=0;i<=node_count-1;i++)); do
         varname=NODE_${node_num}_FLEX_IP
         ip_address=${!varname:-dynamic}
@@ -80,7 +86,8 @@ function create_nodes {
             echo "Using IP address ${ip_address} for worker node $i"
         fi
         # currently dynamic ip address is required to install stuff from the internet
-        scw create --name="k8s-node-${i}" --ip-address=${ip_address} --commercial-type="DEV1-S" f974feac > ./tmp/node_${i}_id
+        scw create --name="${cluster_name}-node-${i}" --ip-address=${ip_address} \
+         --commercial-type="DEV1-S" --env="${COMMON_TAGS} role=master" f974feac > ./tmp/node_${i}_id
     done
 }
 
@@ -89,7 +96,7 @@ function bootstrap {
     echo "Nodes created, starting now."
     start_all
     echo "Waiting for nodes to come up"
-    wait_for_state "running"
+    wait_for_state "running" ${cluster_name}
     echo "Sleeping 1m to let nodes be fully started"
     sleep 60
     install_kubeadm
@@ -99,16 +106,17 @@ function bootstrap {
 }
 
 function delete_all {
-    echo "Deleting all k8s- servers"
-    scw rm $(scw ps -a | grep k8s- | awk '{print $1}')
+    echo "Deleting all ${cluster_name}- servers"
+    scw rm $(scw ps -a | grep ${cluster_name}- | awk '{print $1}')
 }
 
 function create_kubeconfig {
+    master_ip=$(get_master_ip)
     # scw cp didn't work here, so we use scp directly
     scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -q \
-        root@${SCW_FLEX_IP}:/etc/kubernetes/admin.conf ./kubeconfig > tmp/kubeconfig.log
+        root@${master_ip}:/etc/kubernetes/admin.conf ./kubeconfig > tmp/kubeconfig.log
     kubectl --kubeconfig=./kubeconfig config set \
-        clusters.kubernetes.server https://${SCW_FLEX_IP}:6443 >> tmp/kubeconfig.log
+        clusters.kubernetes.server https://${master_ip}:6443 >> tmp/kubeconfig.log
     echo "Stored kubeconfig to ./kubeconfig set following environment variable to use it:"
     echo
     echo "  export KUBECONFIG=$(pwd)/kubeconfig"
@@ -124,11 +132,7 @@ function main {
     fi
 
     if [ "${1}" == "bootstrap" ]; then
-        if [ -z "${SCW_FLEX_IP}" ]; then
-            echo "SCW_FLEX_IP must be set. Create a flexible IP using the dashboard and set the variable to the IP."
-            exit 1
-        fi
-        if $(scw ps -a | grep -q 'k8s-'); then
+        if $(scw ps -a | grep -q '${cluster_name}-'); then
             echo "Found k8s nodes, aborting bootstrap. Delete them using ${0} delete"
             echo "Found nodes:"
             scw ps -a | grep -e k8s --color=never
@@ -154,8 +158,9 @@ function main {
             fi
         fi
     elif [ "${1}" == "delete" ]; then
-        if $(scw ps -a | grep -q 'k8s-'); then
+        if $(scw ps -a | grep -q '${cluster_name}-'); then
             delete_all
+            # todo delete volumes (list with scw images -f type=volume --region= ...)
             rm -r tmp
         else
             echo "Nothing to delete"

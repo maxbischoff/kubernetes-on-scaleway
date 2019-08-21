@@ -1,4 +1,8 @@
 
+function get_master_ip {
+    scw inspect -f "{{ .PublicAddress.IP }}" $(cat ./tmp/master_id)
+}
+
 function exec_master {
     user=${EXEC_USER:-"root"}
     echo "Running '${@}' on master node as user ${user}"
@@ -20,7 +24,8 @@ function exec_all_nodes {
 
 function wait_for_state {
     state=${1}
-    while [ $(scw ps -a | grep k8s- | grep -c "${state}") -lt ${node_count} ];
+    cluster_name=${2}
+    while [ $(scw ps -a | grep ${cluster_name}- | grep -c "${state}") -lt ${node_count} ];
         do sleep 5 ;
     done
 }
