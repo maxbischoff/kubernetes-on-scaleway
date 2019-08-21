@@ -8,6 +8,7 @@ function show_help {
     echo "usage: $(basename ${0}) COMMAND [OPTIONS]"
     echo
     echo "Currently the variable SCW_FLEX_IP must be set to a pre-provisioned flexible IP for the master node!"
+    echo "You can also apply flex-IPs for worker nodes with environment variables NODE_0_FLEX_IP"
     echo
     echo "Commands:"
     echo "  bootstrap   Bootstrap a cluster in mulitple phases (see below)"
@@ -73,8 +74,13 @@ function create_nodes {
     echo "Creating one master and ${node_count} worker nodes."
     scw create --name="k8s-master" --ip-address="${SCW_FLEX_IP}" --commercial-type="DEV1-S" f974feac > ./tmp/master_id
     for ((i=0;i<=node_count-1;i++)); do
+        varname=NODE_${node_num}_FLEX_IP
+        ip_address=${!varname:-dynamic}
+        if ip_address != "dynamic"; then
+            echo "Using IP address ${ip_address} for worker node $i"
+        fi
         # currently dynamic ip address is required to install stuff from the internet
-        scw create --name="k8s-node-${i}" --ip-address=dynamic --commercial-type="DEV1-S" f974feac > ./tmp/node_${i}_id
+        scw create --name="k8s-node-${i}" --ip-address=${ip_address} --commercial-type="DEV1-S" f974feac > ./tmp/node_${i}_id
     done
 }
 
